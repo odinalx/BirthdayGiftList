@@ -1,79 +1,143 @@
-# NextJS Boilerplate
+# Ma Liste d'Anniversaire
 
-Ce projet est une **boilerplate/template** de projet Next.js pré-configurée avec les technologies modernes suivantes :
+Application web de liste de cadeaux d'anniversaire. Le créateur de la liste se connecte avec Google, ajoute ses cadeaux, puis partage un lien avec ses proches. Les visiteurs peuvent réserver des cadeaux pour éviter les doublons.
 
-## 🛠️ Technologies incluses
+## Fonctionnalités
 
-- **Next.js 14** - Framework React avec App Router
-- **TypeScript** - Typage statique pour JavaScript
-- **Tailwind CSS** - Framework CSS utilitaire
-- **shadcn/ui** - Composants UI réutilisables et personnalisables
-- **ESLint + Prettier** - Linting et formatage automatique
-- **Formatage automatique** - Configuration pour formater le code à la sauvegarde
+- **Connexion Google** — le propriétaire de la liste se connecte une seule fois
+- **Gestion des cadeaux** — ajout avec titre, lien, image, prix et description
+- **Lien partageable** — URL unique `/list/[slug]` à envoyer à ses proches
+- **Réservation** — les visiteurs entrent leur prénom et réservent un cadeau
+- **Libération** — un visiteur peut annuler sa réservation
+- **Tableau de bord admin** — voir tous les cadeaux, qui a réservé quoi, marquer un cadeau comme offert
+- **Interface 100% en français**
 
-## 🎯 Objectif
+## Stack technique
 
-Cette boilerplate sert de **base de départ** pour créer de nouveaux projets. Elle n'est **pas destinée à être modifiée pour être lancée** en tant que projet final, mais plutôt à être copiée/clonée comme point de départ pour d'autres projets.
+| Couche | Technologie |
+|--------|------------|
+| Frontend | Vue 3 + Vite + TypeScript |
+| Styles | Tailwind CSS v4 + shadcn-vue |
+| Backend | Python FastAPI |
+| Base de données | PostgreSQL (SQLAlchemy async + Alembic) |
+| Auth | Google OAuth 2.0 + JWT (cookies httpOnly) |
 
-## 🚀 Utilisation
+## Structure du projet
 
-### Pour utiliser cette boilerplate :
+```
+BirthdayGift/
+├── src/                        # Frontend Vue 3
+│   ├── pages/
+│   │   ├── HomePage.vue        # Page de connexion
+│   │   ├── OAuthCallbackPage.vue
+│   │   ├── DashboardPage.vue   # Tableau de bord admin
+│   │   └── ListPage.vue        # Liste publique partageable
+│   ├── composables/
+│   │   ├── useAuth.ts          # Gestion de session Google
+│   │   └── useVisitor.ts       # Identité visiteur (localStorage)
+│   ├── services/api.ts         # Client API
+│   ├── router/index.ts
+│   └── style.css
+├── backend/                    # Backend FastAPI
+│   ├── app/
+│   │   ├── api/v1/
+│   │   │   ├── auth.py         # Routes Google OAuth + session
+│   │   │   └── gifts.py        # CRUD cadeaux + réservation
+│   │   ├── models/
+│   │   │   ├── user.py
+│   │   │   └── gift.py
+│   │   ├── schemas/
+│   │   ├── services/auth.py    # OAuth Google
+│   │   ├── core/               # Sécurité, logs, middleware
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   └── main.py
+│   └── alembic/               # Migrations DB
+└── README.md
+```
 
-1. **Cloner ce repository** dans un nouveau dossier de projet
-2. **Supprimer le `.git`** existant et initialiser un nouveau repository
-3. **Modifier les informations** du projet (nom, description, etc.)
-4. **Installer les dépendances** et commencer le développement
+## Installation
 
-### Commandes classiques :
+### Prérequis
+
+- Node.js 18+
+- Python 3.12+
+- PostgreSQL
+
+### Frontend
 
 ```bash
 # Installer les dépendances
 npm install
 
-# Lancer le serveur de développement
+# Lancer en développement
 npm run dev
 
-# Build pour la production
+# Build production
 npm run build
-
-# Lancer en production
-npm start
-
-# Linter
-npm run lint
-
-# Formater le code
-npm run format
 ```
 
-## 📁 Structure du projet
+### Backend
 
+```bash
+cd backend
+
+# Créer un environnement virtuel
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# ou .venv\Scripts\activate  # Windows
+
+# Installer les dépendances
+pip install -e .
+
+# Copier et remplir les variables d'environnement
+cp .env.example .env
+
+# Créer la base de données PostgreSQL
+createdb birthday_gift
+
+# Appliquer les migrations
+alembic upgrade head
+
+# Lancer le serveur
+uvicorn app.main:app --reload
 ```
-├── app/                 # App Router (Next.js 14)
-├── components/          # Composants réutilisables
-├── lib/                 # Utilitaires et configurations
-├── public/              # Assets statiques
-└── styles/              # Styles globaux
+
+### Variables d'environnement (backend/.env)
+
+```env
+ENVIRONMENT=dev
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/birthday_gift
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/google/callback
+JWT_SECRET_KEY=votre-cle-secrete-longue-au-moins-32-caracteres
+FRONTEND_URL=http://localhost:5173
 ```
 
-## ⚙️ Configuration
+### Variable d'environnement (frontend .env.local)
 
-- **TypeScript** configuré avec des règles strictes
-- **Tailwind CSS** avec configuration personnalisée
-- **shadcn/ui** avec thème sombre/clair
-- **ESLint** avec règles Next.js et TypeScript
-- **Prettier** pour le formatage automatique
-- **Formatage à la sauvegarde** configuré dans VS Code
+```env
+VITE_API_URL=http://localhost:8000/api/v1
+```
 
-## 🔧 Personnalisation
+### Configuration Google OAuth
 
-Après avoir cloné cette boilerplate :
+1. Aller sur [Google Cloud Console](https://console.cloud.google.com/)
+2. Créer un projet ou en sélectionner un existant
+3. Activer l'API Google+ / People
+4. Créer des identifiants OAuth 2.0
+5. Ajouter `http://localhost:8000/api/v1/auth/google/callback` comme URI de redirection autorisé
+6. Copier `Client ID` et `Client Secret` dans `.env`
 
-1. Modifiez le `package.json` avec les informations de votre projet
-2. Ajustez la configuration Tailwind dans `tailwind.config.js`
-3. Personnalisez les composants shadcn/ui selon vos besoins
-4. Modifiez les couleurs et thèmes dans `globals.css`
+## Roadmap
 
----
-
-**Note :** Cette boilerplate est conçue pour être un point de départ solide et moderne pour vos projets Next.js. Elle inclut les meilleures pratiques et outils actuels pour un développement efficace.
+- [x] Connexion Google OAuth
+- [x] Tableau de bord admin (ajouter, modifier, supprimer des cadeaux)
+- [x] Lien partageable unique par liste
+- [x] Page publique avec dialogue de saisie du prénom
+- [x] Réservation et libération de cadeaux (lié au visiteur)
+- [x] Statuts : Disponible / Réservé / Offert
+- [ ] Notifications email quand un cadeau est réservé
+- [ ] Uploader une image (plutôt qu'une URL)
+- [ ] Récupération automatique de l'image depuis l'URL du produit
