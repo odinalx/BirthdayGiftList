@@ -56,9 +56,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(RequestIDMiddleware)
+_cors_origins = [settings.frontend_url]
+if settings.environment != "prod":
+    # Allow any localhost port in dev so Vite port changes don't break CORS
+    _cors_origins += [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Cookie", "X-Request-ID"],

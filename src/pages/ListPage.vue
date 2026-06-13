@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type Gift } from '@/services/api'
 import { useVisitor } from '@/composables/useVisitor'
-import { Gift as GiftIcon, ExternalLink, Check, RotateCcw } from 'lucide-vue-next'
+import { Gift as GiftIcon, ExternalLink, Check, RotateCcw, ShoppingBag } from 'lucide-vue-next'
 
 const route = useRoute()
 const slug = route.params.slug as string
@@ -70,11 +70,25 @@ async function unreserve(gift: Gift) {
   }
 }
 
+async function markAsBought(gift: Gift) {
+  actionLoadingId.value = gift.id
+  try {
+    const updated = await api.buyGift(gift.id, visitorId.value)
+    const idx = gifts.value.findIndex(g => g.id === gift.id)
+    if (idx !== -1) gifts.value[idx] = updated
+  } catch {
+    error.value = 'Erreur lors de la mise à jour.'
+    setTimeout(() => (error.value = null), 3000)
+  } finally {
+    actionLoadingId.value = null
+  }
+}
+
 const isMyClaim = (gift: Gift) =>
   gift.status === 'RESERVED' && gift.claimed_by_name === visitorName.value
 
 function statusLabel(status: Gift['status']) {
-  return { AVAILABLE: 'Disponible', RESERVED: 'Réservé', BOUGHT: 'Offert' }[status]
+  return { AVAILABLE: 'Disponible', RESERVED: 'Réservé', BOUGHT: 'Acheté' }[status]
 }
 </script>
 
@@ -157,7 +171,14 @@ function statusLabel(status: Gift['status']) {
                 </template>
                 <template v-else-if="gift.status === 'RESERVED'">
                   <div v-if="isMyClaim(gift)" class="my-claim">
-                    <span>Vous avez réservé ce cadeau</span>
+                    <button
+                      class="btn-buy"
+                      :disabled="actionLoadingId === gift.id"
+                      @click="markAsBought(gift)"
+                    >
+                      <ShoppingBag :size="13" />
+                      Je l'ai acheté !
+                    </button>
                     <button
                       class="btn-unreserve"
                       :disabled="actionLoadingId === gift.id"
@@ -172,7 +193,7 @@ function statusLabel(status: Gift['status']) {
                   </div>
                 </template>
                 <template v-else-if="gift.status === 'BOUGHT'">
-                  <span class="bought-label">Déjà offert ✓</span>
+                  <span class="bought-label">Déjà acheté ✓</span>
                 </template>
               </div>
             </div>
@@ -356,6 +377,24 @@ function statusLabel(status: Gift['status']) {
 .btn-reserve:hover:not(:disabled) { background: #3d3a36; }
 .btn-reserve:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.btn-buy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-buy:hover:not(:disabled) { background: #15803d; }
+.btn-buy:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .my-claim {
   display: flex;
   align-items: center;
@@ -472,4 +511,16 @@ function statusLabel(status: Gift['status']) {
 
 .dialog-card button:hover:not(:disabled) { background: #3d3a36; }
 .dialog-card button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 480px) {
+  .main { padding: 1rem 0.75rem; }
+
+  .gifts-grid { grid-template-columns: 1fr; gap: 1rem; }
+
+  .gift-footer { flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  .my-claim { flex-wrap: wrap; gap: 6px; }
+
+  .visitor-name { display: none; }
+}
 </style>

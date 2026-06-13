@@ -135,6 +135,20 @@ class ApiClient {
       body: JSON.stringify({ visitor_id: visitorId }),
     })
   }
+
+  async buyGift(id: string, visitorId: string): Promise<Gift> {
+    return this.request(`/gifts/${id}/buy`, {
+      method: 'POST',
+      body: JSON.stringify({ visitor_id: visitorId }),
+    })
+  }
+
+  async fetchUrlMeta(url: string): Promise<{ title?: string; description?: string; image_url?: string; price?: number }> {
+    return this.request('/gifts/fetch-meta', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    })
+  }
 }
 
 export const api = new ApiClient()

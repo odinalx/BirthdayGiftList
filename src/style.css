@@ -180,11 +180,12 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 60px;
+  height: 56px;
   padding: 0 20px;
   background: var(--app-bg);
   border-bottom: 1px solid var(--app-border);
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .app-navbar-logo {
@@ -192,15 +193,20 @@ html {
   align-items: center;
   gap: 10px;
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   color: var(--app-text);
   text-decoration: none;
   letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .app-navbar-logo .logo-mark {
   width: 28px;
   height: 28px;
+  flex-shrink: 0;
   border-radius: 7px;
   background: var(--app-text);
   color: var(--app-bg);
@@ -209,4 +215,13 @@ html {
   justify-content: center;
   font-weight: 800;
   font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+  .app-navbar {
+    padding: 0 14px;
+  }
+  .app-navbar-logo {
+    font-size: 0.9rem;
+  }
 }

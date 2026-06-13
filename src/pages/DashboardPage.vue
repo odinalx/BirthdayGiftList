@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import { api, type Gift, type GiftCreate } from '@/services/api'
-import { Copy, Plus, Trash2, ExternalLink, Gift as GiftIcon, LogOut, Check } from 'lucide-vue-next'
+import { api, type Gift, type GiftCreate, type GiftUpdate } from '@/services/api'
+import { Copy, Plus, Trash2, ExternalLink, Gift as GiftIcon, LogOut, Check, Pencil, Loader2, X } from 'lucide-vue-next'
 
 const { user, logout } = useAuth()
 const gifts = ref<Gift[]>([])
@@ -24,6 +24,19 @@ const form = ref<GiftCreate>({
   price: undefined,
 })
 const isSubmitting = ref(false)
+const isFetchingMeta = ref(false)
+
+// Edit modal state
+const editingGift = ref<Gift | null>(null)
+const editForm = ref<GiftUpdate>({})
+const isEditSubmitting = ref(false)
+const isEditFetchingMeta = ref(false)
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+function proxyImageUrl(url: string | undefined | null) {
+  if (!url) return ''
+  return `${API_BASE}/gifts/proxy-image?url=${encodeURIComponent(url)}`
+}
 
 onMounted(async () => {
   try {
@@ -56,6 +69,77 @@ async function addGift() {
   }
 }
 
+async function fetchMetaForForm() {
+  const url = form.value.link?.trim()
+  if (!url) return
+  isFetchingMeta.value = true
+  try {
+    const meta = await api.fetchUrlMeta(url)
+    if (meta.title) form.value.title = meta.title
+    if (meta.description) form.value.description = meta.description
+    if (meta.image_url) form.value.image_url = meta.image_url
+    if (meta.price) form.value.price = meta.price
+  } catch {
+    // silently ignore fetch errors
+  } finally {
+    isFetchingMeta.value = false
+  }
+}
+
+function openEdit(gift: Gift) {
+  editingGift.value = gift
+  editForm.value = {
+    title: gift.title,
+    description: gift.description ?? '',
+    image_url: gift.image_url ?? '',
+    link: gift.link ?? '',
+    price: gift.price ?? undefined,
+  }
+}
+
+function closeEdit() {
+  editingGift.value = null
+  editForm.value = {}
+}
+
+async function fetchMetaForEdit() {
+  const url = editForm.value.link?.trim()
+  if (!url) return
+  isEditFetchingMeta.value = true
+  try {
+    const meta = await api.fetchUrlMeta(url)
+    if (meta.title) editForm.value.title = meta.title
+    if (meta.description) editForm.value.description = meta.description
+    if (meta.image_url) editForm.value.image_url = meta.image_url
+    if (meta.price) editForm.value.price = meta.price
+  } catch {
+    // silently ignore
+  } finally {
+    isEditFetchingMeta.value = false
+  }
+}
+
+async function saveEdit() {
+  if (!editingGift.value) return
+  isEditSubmitting.value = true
+  try {
+    const updated = await api.updateGift(editingGift.value.id, {
+      title: (editForm.value.title as string).trim() || editingGift.value.title,
+      description: editForm.value.description || undefined,
+      image_url: editForm.value.image_url || undefined,
+      link: editForm.value.link || undefined,
+      price: editForm.value.price || undefined,
+    })
+    const idx = gifts.value.findIndex(g => g.id === updated.id)
+    if (idx !== -1) gifts.value[idx] = updated
+    closeEdit()
+  } catch {
+    error.value = 'Erreur lors de la modification.'
+  } finally {
+    isEditSubmitting.value = false
+  }
+}
+
 async function markBought(gift: Gift) {
   try {
     const updated = await api.updateGift(gift.id, {
@@ -85,7 +169,7 @@ function copyLink() {
 }
 
 function statusLabel(status: Gift['status']) {
-  return { AVAILABLE: 'Disponible', RESERVED: 'Réservé', BOUGHT: 'Offert' }[status]
+  return { AVAILABLE: 'Disponible', RESERVED: 'Réservé', BOUGHT: 'Acheté' }[status]
 }
 
 function statusClass(status: Gift['status']) {
@@ -119,7 +203,7 @@ async function handleLogout() {
         />
         <button class="logout-btn" @click="handleLogout">
           <LogOut :size="16" />
-          Déconnexion
+          <span>Déconnexion</span>
         </button>
       </div>
     </nav>
@@ -163,11 +247,25 @@ async function handleLogout() {
           </div>
           <div class="field full">
             <label>Lien vers le produit</label>
-            <input v-model="form.link" type="url" placeholder="https://..." />
+            <div class="link-row">
+              <input v-model="form.link" type="url" placeholder="https://..." />
+              <button
+                type="button"
+                class="btn-import"
+                :disabled="!form.link?.trim() || isFetchingMeta"
+                @click="fetchMetaForForm"
+              >
+                <Loader2 v-if="isFetchingMeta" :size="13" class="spin" />
+                <span v-else>Importer</span>
+              </button>
+            </div>
           </div>
           <div class="field full">
             <label>URL de l'image</label>
             <input v-model="form.image_url" type="url" placeholder="https://..." />
+            <div v-if="form.image_url" class="img-preview-wrap">
+              <img :src="proxyImageUrl(form.image_url)" alt="Aperçu" class="img-preview" @error="(e) => (e.target as HTMLImageElement).style.display='none'" />
+            </div>
           </div>
           <div class="field full">
             <label>Description (optionnel)</label>
@@ -203,7 +301,7 @@ async function handleLogout() {
             <tr v-for="gift in gifts" :key="gift.id">
               <td>
                 <div class="gift-name-cell">
-                  <img v-if="gift.image_url" :src="gift.image_url" :alt="gift.title" class="gift-thumb" />
+                  <img v-if="gift.image_url" :src="proxyImageUrl(gift.image_url)" :alt="gift.title" class="gift-thumb" />
                   <div>
                     <div class="gift-title">{{ gift.title }}</div>
                     <div v-if="gift.description" class="gift-desc">{{ gift.description }}</div>
@@ -222,6 +320,9 @@ async function handleLogout() {
                   <a v-if="gift.link" :href="gift.link" target="_blank" class="icon-btn" title="Voir le produit">
                     <ExternalLink :size="15" />
                   </a>
+                  <button class="icon-btn" title="Modifier" @click="openEdit(gift)">
+                    <Pencil :size="15" />
+                  </button>
                   <button
                     class="icon-btn"
                     :title="gift.status === 'BOUGHT' ? 'Marquer comme disponible' : 'Marquer comme offert'"
@@ -239,6 +340,64 @@ async function handleLogout() {
         </table>
       </div>
     </main>
+  </div>
+
+  <!-- Edit modal -->
+  <div v-if="editingGift" class="modal-overlay" @click.self="closeEdit">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Modifier le cadeau</h3>
+        <button class="modal-close" @click="closeEdit"><X :size="18" /></button>
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Nom du cadeau *</label>
+          <input v-model="editForm.title" type="text" placeholder="ex : AirPods Pro" />
+        </div>
+        <div class="field">
+          <label>Prix (€)</label>
+          <input v-model.number="editForm.price" type="number" placeholder="ex : 249" />
+        </div>
+        <div class="field full">
+          <label>Lien vers le produit</label>
+          <div class="link-row">
+            <input v-model="editForm.link" type="url" placeholder="https://..." />
+            <button
+              type="button"
+              class="btn-import"
+              :disabled="!editForm.link?.trim() || isEditFetchingMeta"
+              @click="fetchMetaForEdit"
+            >
+              <Loader2 v-if="isEditFetchingMeta" :size="13" class="spin" />
+              <span v-else>Importer</span>
+            </button>
+          </div>
+        </div>
+        <div class="field full">
+          <label>URL de l'image</label>
+          <input v-model="editForm.image_url" type="url" placeholder="https://..." />
+          <div v-if="editForm.image_url" class="img-preview-wrap">
+            <img :src="proxyImageUrl(editForm.image_url)" alt="Aperçu" class="img-preview" @error="(e) => (e.target as HTMLImageElement).style.display='none'" />
+          </div>
+        </div>
+        <div class="field full">
+          <label>Description (optionnel)</label>
+          <textarea v-model="editForm.description" rows="2" placeholder="Précisions sur la couleur, taille..." />
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-secondary" @click="closeEdit">Annuler</button>
+        <button
+          class="btn-primary"
+          :disabled="isEditSubmitting || !editForm.title?.trim()"
+          @click="saveEdit"
+        >
+          {{ isEditSubmitting ? 'Enregistrement...' : 'Enregistrer' }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -288,6 +447,10 @@ async function handleLogout() {
   gap: 1.5rem;
 }
 
+@media (max-width: 600px) {
+  .main { padding: 1rem 0.75rem; gap: 1rem; }
+}
+
 .share-section {
   background: var(--app-surface);
   border: 1px solid var(--app-border);
@@ -308,12 +471,14 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .share-link {
   flex: 1;
+  min-width: 0;
   font-family: monospace;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--app-text);
   background: var(--app-surface-2);
   border: 1px solid var(--app-border);
@@ -355,6 +520,7 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .section-header h2 {
@@ -481,7 +647,7 @@ async function handleLogout() {
   background: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .gift-table {
@@ -561,4 +727,128 @@ async function handleLogout() {
 
 .icon-btn:hover { background: var(--app-surface-2); color: var(--app-text); }
 .icon-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+
+/* Link row with import button */
+.link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.link-row input { flex: 1; }
+
+.btn-import {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.btn-import:hover:not(:disabled) {
+  background: var(--app-text);
+  color: white;
+  border-color: var(--app-text);
+}
+
+.btn-import:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Image preview */
+.img-preview-wrap {
+  margin-top: 6px;
+}
+
+.img-preview {
+  height: 80px;
+  max-width: 160px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }
+
+/* Edit modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.modal-card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--app-text);
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--app-text-muted);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.modal-close:hover { background: var(--app-surface-2); color: var(--app-text); }
+
+@media (max-width: 600px) {
+  .nav-right { gap: 8px; }
+  .logout-btn span { display: none; }
+
+  .section-header { flex-wrap: wrap; }
+
+  .form-grid { grid-template-columns: 1fr; }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal-card {
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .gift-table th:nth-child(4),
+  .gift-table td:nth-child(4) { display: none; }
+}
 </style>

@@ -44,3 +44,18 @@ class ReserveRequest(BaseModel):
 
 class UnreserveRequest(BaseModel):
     visitor_id: str
+
+
+class BuyRequest(BaseModel):
+    visitor_id: str
+
+
+class UrlFetchRequest(BaseModel):
+    url: str
+
+
+class UrlMetaResponse(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    price: float | None = None

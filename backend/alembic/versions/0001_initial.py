@@ -7,7 +7,6 @@ Create Date: 2024-01-01 00:00:00.000000
 """
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0001"
@@ -17,44 +16,46 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "users",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("google_id", sa.String(255), nullable=False),
-        sa.Column("email", sa.String(255), nullable=False),
-        sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("picture", sa.String(500), nullable=True),
-        sa.Column("list_slug", sa.String(50), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("ix_users_google_id", "users", ["google_id"], unique=True)
-    op.create_index("ix_users_email", "users", ["email"], unique=True)
-    op.create_index("ix_users_list_slug", "users", ["list_slug"], unique=True)
+    op.execute("CREATE TYPE giftstatus AS ENUM ('AVAILABLE', 'RESERVED', 'BOUGHT')")
 
-    sa.Enum("AVAILABLE", "RESERVED", "BOUGHT", name="giftstatus").create(op.get_bind())
+    op.execute("""
+        CREATE TABLE users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            google_id VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            picture VARCHAR(500),
+            list_slug VARCHAR(50) NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            CONSTRAINT uq_users_google_id UNIQUE (google_id),
+            CONSTRAINT uq_users_email UNIQUE (email),
+            CONSTRAINT uq_users_list_slug UNIQUE (list_slug)
+        )
+    """)
+    op.execute("CREATE INDEX ix_users_google_id ON users (google_id)")
+    op.execute("CREATE INDEX ix_users_email ON users (email)")
+    op.execute("CREATE INDEX ix_users_list_slug ON users (list_slug)")
 
-    op.create_table(
-        "gifts",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.UUID(), nullable=False),
-        sa.Column("title", sa.String(255), nullable=False),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("image_url", sa.String(1000), nullable=True),
-        sa.Column("link", sa.String(1000), nullable=True),
-        sa.Column("price", sa.Numeric(10, 2), nullable=True),
-        sa.Column("status", sa.Enum("AVAILABLE", "RESERVED", "BOUGHT", name="giftstatus"), nullable=False, server_default="AVAILABLE"),
-        sa.Column("claimed_by_name", sa.String(255), nullable=True),
-        sa.Column("claimed_by_visitor_id", sa.String(255), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    op.execute("""
+        CREATE TABLE gifts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            image_url VARCHAR(1000),
+            link VARCHAR(1000),
+            price NUMERIC(10, 2),
+            status giftstatus NOT NULL DEFAULT 'AVAILABLE',
+            claimed_by_name VARCHAR(255),
+            claimed_by_visitor_id VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+        )
+    """)
 
 
 def downgrade() -> None:
-    op.drop_table("gifts")
-    op.drop_table("users")
-    sa.Enum("AVAILABLE", "RESERVED", "BOUGHT", name="giftstatus").drop(op.get_bind())
+    op.execute("DROP TABLE IF EXISTS gifts")
+    op.execute("DROP TABLE IF EXISTS users")
+    op.execute("DROP TYPE IF EXISTS giftstatus")
