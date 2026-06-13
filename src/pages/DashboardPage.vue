@@ -301,7 +301,7 @@ async function handleLogout() {
             <tr v-for="gift in gifts" :key="gift.id">
               <td>
                 <div class="gift-name-cell">
-                  <img v-if="gift.image_url" :src="proxyImageUrl(gift.image_url)" :alt="gift.title" class="gift-thumb" />
+                  <img v-if="gift.image_url" :src="proxyImageUrl(gift.image_url)" :alt="gift.title" class="gift-thumb" @error="(e) => (e.target as HTMLImageElement).style.display='none'" />
                   <div>
                     <div class="gift-title">{{ gift.title }}</div>
                     <div v-if="gift.description" class="gift-desc">{{ gift.description }}</div>
@@ -314,7 +314,7 @@ async function handleLogout() {
                   {{ statusLabel(gift.status) }}
                 </span>
               </td>
-              <td>{{ gift.claimed_by_name || '—' }}</td>
+              <td :data-reserved="gift.claimed_by_name || null">{{ gift.claimed_by_name || '' }}</td>
               <td>
                 <div class="row-actions">
                   <a v-if="gift.link" :href="gift.link" target="_blank" class="icon-btn" title="Voir le produit">
@@ -829,7 +829,7 @@ async function handleLogout() {
 
 .modal-close:hover { background: var(--app-surface-2); color: var(--app-text); }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .nav-right { gap: 8px; }
   .logout-btn span { display: none; }
 
@@ -848,7 +848,50 @@ async function handleLogout() {
     overflow-y: auto;
   }
 
-  .gift-table th:nth-child(4),
-  .gift-table td:nth-child(4) { display: none; }
+  /* Table → card layout */
+  .gift-table-wrap {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .gift-table { display: block; }
+  .gift-table thead { display: none; }
+  .gift-table tbody { display: flex; flex-direction: column; gap: 10px; }
+  .gift-table tr {
+    display: grid;
+    grid-template-areas:
+      "name name"
+      "price status"
+      "reserved reserved"
+      "actions actions";
+    grid-template-columns: auto 1fr;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    padding: 12px;
+    gap: 6px 12px;
+  }
+  .gift-table td { padding: 0; border: none; vertical-align: top; }
+  .gift-table td:nth-child(1) { grid-area: name; }
+  .gift-table td:nth-child(2) { grid-area: price; align-self: center; font-weight: 600; }
+  .gift-table td:nth-child(3) { grid-area: status; align-self: center; }
+  .gift-table td:nth-child(4) {
+    grid-area: reserved;
+    font-size: 0.8rem;
+    color: var(--app-text-muted);
+  }
+  .gift-table td:nth-child(4)[data-reserved]::before {
+    content: "Réservé par ";
+    font-weight: 600;
+  }
+  .gift-table td:nth-child(4):not([data-reserved]) { display: none; }
+  .gift-table td:nth-child(5) {
+    grid-area: actions;
+    border-top: 1px solid var(--app-border);
+    padding-top: 8px;
+    margin-top: 2px;
+  }
+  .gift-table tr:last-child td { border-bottom: none; }
 }
 </style>
