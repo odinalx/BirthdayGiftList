@@ -25,12 +25,34 @@ const form = ref<GiftCreate>({
 })
 const isSubmitting = ref(false)
 const isFetchingMeta = ref(false)
+const formErrors = ref<Record<string, string>>({})
 
 // Edit modal state
 const editingGift = ref<Gift | null>(null)
 const editForm = ref<GiftUpdate>({})
 const isEditSubmitting = ref(false)
 const isEditFetchingMeta = ref(false)
+const editFormErrors = ref<Record<string, string>>({})
+
+function validateGiftForm(data: { title?: string; price?: number | null; link?: string; image_url?: string }) {
+  const errors: Record<string, string> = {}
+  if (!data.title?.trim()) {
+    errors.title = 'Le nom du cadeau est requis.'
+  }
+  if (data.price === undefined || data.price === null || data.price === ('' as unknown as number)) {
+    errors.price = 'Le prix est requis.'
+  } else if (isNaN(Number(data.price)) || Number(data.price) <= 0) {
+    errors.price = 'Le prix doit être un nombre positif.'
+  }
+  const urlPattern = /^https?:\/\/.+/
+  if (data.link?.trim() && !urlPattern.test(data.link.trim())) {
+    errors.link = 'Le lien doit commencer par http:// ou https://.'
+  }
+  if (data.image_url?.trim() && !urlPattern.test(data.image_url.trim())) {
+    errors.image_url = "L'URL de l'image doit commencer par http:// ou https://."
+  }
+  return errors
+}
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 function proxyImageUrl(url: string | undefined | null) {
@@ -49,7 +71,8 @@ onMounted(async () => {
 })
 
 async function addGift() {
-  if (!form.value.title.trim()) return
+  formErrors.value = validateGiftForm(form.value)
+  if (Object.keys(formErrors.value).length) return
   isSubmitting.value = true
   try {
     const gift = await api.createGift({
@@ -61,6 +84,7 @@ async function addGift() {
     })
     gifts.value.unshift(gift)
     form.value = { title: '', description: '', image_url: '', link: '', price: undefined }
+    formErrors.value = {}
     showAddForm.value = false
   } catch {
     error.value = 'Erreur lors de l\'ajout du cadeau.'
@@ -100,6 +124,7 @@ function openEdit(gift: Gift) {
 function closeEdit() {
   editingGift.value = null
   editForm.value = {}
+  editFormErrors.value = {}
 }
 
 async function fetchMetaForEdit() {
@@ -121,6 +146,8 @@ async function fetchMetaForEdit() {
 
 async function saveEdit() {
   if (!editingGift.value) return
+  editFormErrors.value = validateGiftForm(editForm.value)
+  if (Object.keys(editFormErrors.value).length) return
   isEditSubmitting.value = true
   try {
     const updated = await api.updateGift(editingGift.value.id, {
@@ -237,18 +264,20 @@ async function handleLogout() {
       <div v-if="showAddForm" class="add-form">
         <h3>Nouveau cadeau</h3>
         <div class="form-grid">
-          <div class="field">
+          <div class="field" :class="{ 'field--error': formErrors.title }">
             <label>Nom du cadeau *</label>
-            <input v-model="form.title" type="text" placeholder="ex : AirPods Pro" />
+            <input v-model="form.title" type="text" placeholder="ex : AirPods Pro" @input="delete formErrors.title" />
+            <p v-if="formErrors.title" class="field-error">{{ formErrors.title }}</p>
           </div>
-          <div class="field">
-            <label>Prix (€)</label>
-            <input v-model.number="form.price" type="number" placeholder="ex : 249" />
+          <div class="field" :class="{ 'field--error': formErrors.price }">
+            <label>Prix (€) *</label>
+            <input v-model.number="form.price" type="number" min="0.01" step="0.01" placeholder="ex : 249" @input="delete formErrors.price" />
+            <p v-if="formErrors.price" class="field-error">{{ formErrors.price }}</p>
           </div>
-          <div class="field full">
+          <div class="field full" :class="{ 'field--error': formErrors.link }">
             <label>Lien vers le produit</label>
             <div class="link-row">
-              <input v-model="form.link" type="url" placeholder="https://..." />
+              <input v-model="form.link" type="url" placeholder="https://..." @input="delete formErrors.link" />
               <button
                 type="button"
                 class="btn-import"
@@ -259,11 +288,13 @@ async function handleLogout() {
                 <span v-else>Importer</span>
               </button>
             </div>
+            <p v-if="formErrors.link" class="field-error">{{ formErrors.link }}</p>
           </div>
-          <div class="field full">
+          <div class="field full" :class="{ 'field--error': formErrors.image_url }">
             <label>URL de l'image</label>
-            <input v-model="form.image_url" type="url" placeholder="https://..." />
-            <div v-if="form.image_url" class="img-preview-wrap">
+            <input v-model="form.image_url" type="url" placeholder="https://..." @input="delete formErrors.image_url" />
+            <p v-if="formErrors.image_url" class="field-error">{{ formErrors.image_url }}</p>
+            <div v-if="form.image_url && !formErrors.image_url" class="img-preview-wrap">
               <img :src="proxyImageUrl(form.image_url)" alt="Aperçu" class="img-preview" @error="(e) => (e.target as HTMLImageElement).style.display='none'" />
             </div>
           </div>
@@ -273,8 +304,8 @@ async function handleLogout() {
           </div>
         </div>
         <div class="form-actions">
-          <button class="btn-secondary" @click="showAddForm = false">Annuler</button>
-          <button class="btn-primary" :disabled="isSubmitting || !form.title.trim()" @click="addGift">
+          <button class="btn-secondary" @click="showAddForm = false; formErrors = {}">Annuler</button>
+          <button class="btn-primary" :disabled="isSubmitting" @click="addGift">
             {{ isSubmitting ? 'Ajout...' : 'Ajouter' }}
           </button>
         </div>
@@ -351,18 +382,20 @@ async function handleLogout() {
       </div>
 
       <div class="form-grid">
-        <div class="field">
+        <div class="field" :class="{ 'field--error': editFormErrors.title }">
           <label>Nom du cadeau *</label>
-          <input v-model="editForm.title" type="text" placeholder="ex : AirPods Pro" />
+          <input v-model="editForm.title" type="text" placeholder="ex : AirPods Pro" @input="delete editFormErrors.title" />
+          <p v-if="editFormErrors.title" class="field-error">{{ editFormErrors.title }}</p>
         </div>
-        <div class="field">
-          <label>Prix (€)</label>
-          <input v-model.number="editForm.price" type="number" placeholder="ex : 249" />
+        <div class="field" :class="{ 'field--error': editFormErrors.price }">
+          <label>Prix (€) *</label>
+          <input v-model.number="editForm.price" type="number" min="0.01" step="0.01" placeholder="ex : 249" @input="delete editFormErrors.price" />
+          <p v-if="editFormErrors.price" class="field-error">{{ editFormErrors.price }}</p>
         </div>
-        <div class="field full">
+        <div class="field full" :class="{ 'field--error': editFormErrors.link }">
           <label>Lien vers le produit</label>
           <div class="link-row">
-            <input v-model="editForm.link" type="url" placeholder="https://..." />
+            <input v-model="editForm.link" type="url" placeholder="https://..." @input="delete editFormErrors.link" />
             <button
               type="button"
               class="btn-import"
@@ -373,11 +406,13 @@ async function handleLogout() {
               <span v-else>Importer</span>
             </button>
           </div>
+          <p v-if="editFormErrors.link" class="field-error">{{ editFormErrors.link }}</p>
         </div>
-        <div class="field full">
+        <div class="field full" :class="{ 'field--error': editFormErrors.image_url }">
           <label>URL de l'image</label>
-          <input v-model="editForm.image_url" type="url" placeholder="https://..." />
-          <div v-if="editForm.image_url" class="img-preview-wrap">
+          <input v-model="editForm.image_url" type="url" placeholder="https://..." @input="delete editFormErrors.image_url" />
+          <p v-if="editFormErrors.image_url" class="field-error">{{ editFormErrors.image_url }}</p>
+          <div v-if="editForm.image_url && !editFormErrors.image_url" class="img-preview-wrap">
             <img :src="proxyImageUrl(editForm.image_url)" alt="Aperçu" class="img-preview" @error="(e) => (e.target as HTMLImageElement).style.display='none'" />
           </div>
         </div>
@@ -391,7 +426,7 @@ async function handleLogout() {
         <button class="btn-secondary" @click="closeEdit">Annuler</button>
         <button
           class="btn-primary"
-          :disabled="isEditSubmitting || !editForm.title?.trim()"
+          :disabled="isEditSubmitting"
           @click="saveEdit"
         >
           {{ isEditSubmitting ? 'Enregistrement...' : 'Enregistrer' }}
@@ -597,6 +632,17 @@ async function handleLogout() {
 .field input:focus,
 .field textarea:focus {
   border-color: var(--app-text);
+}
+
+.field--error input,
+.field--error textarea {
+  border-color: #ef4444;
+}
+
+.field-error {
+  font-size: 0.75rem;
+  color: #ef4444;
+  margin: 0;
 }
 
 .form-actions {

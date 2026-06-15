@@ -134,12 +134,14 @@ function statusLabel(status: Gift['status']) {
 
       <div v-else class="gifts-grid">
         <div v-for="gift in gifts" :key="gift.id" class="gift-card">
-          <div class="gift-image-wrap">
-            <img v-if="gift.image_url" :src="gift.image_url" :alt="gift.title" class="gift-image" />
-            <div v-else class="gift-image-placeholder">
-              <GiftIcon :size="32" />
-            </div>
+          <div v-if="gift.image_url" class="gift-image-wrap">
+            <img :src="gift.image_url" :alt="gift.title" class="gift-image" />
             <span class="gift-status-badge" :class="`status-${gift.status.toLowerCase()}`">
+              {{ statusLabel(gift.status) }}
+            </span>
+          </div>
+          <div v-else class="gift-no-image">
+            <span class="gift-status-badge gift-status-badge--inline" :class="`status-${gift.status.toLowerCase()}`">
               {{ statusLabel(gift.status) }}
             </span>
           </div>
@@ -274,13 +276,10 @@ function statusLabel(status: Gift['status']) {
   object-fit: cover;
 }
 
-.gift-image-placeholder {
-  width: 100%;
-  height: 100%;
+.gift-no-image {
+  padding: 0.75rem 0.875rem 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--app-text-dim);
+  justify-content: flex-end;
 }
 
 .gift-status-badge {
@@ -291,6 +290,10 @@ function statusLabel(status: Gift['status']) {
   border-radius: 20px;
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.gift-status-badge--inline {
+  position: static;
 }
 
 .status-available { background: #dcfce7; color: #16a34a; }

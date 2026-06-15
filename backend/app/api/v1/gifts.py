@@ -1,4 +1,7 @@
+import json
 import logging
+import re
+from html import unescape
 from html.parser import HTMLParser
 from uuid import UUID
 
@@ -177,7 +180,6 @@ class _OGParser(HTMLParser):
                 self._parse_jsonld(self._script_buf)
 
     def _parse_jsonld(self, text: str) -> None:
-        import json
         try:
             data = json.loads(text)
         except Exception:
@@ -225,7 +227,6 @@ class _OGParser(HTMLParser):
 def _parse_price(raw: str | None) -> float | None:
     if not raw:
         return None
-    import re
     cleaned = re.sub(r"[^\d,.]", "", raw.strip())
     if not cleaned:
         return None
@@ -264,8 +265,34 @@ _BOT_PAGE_TITLES = frozenset(
         "Security Check",
         "One moment, please...",
         "Bot or Not?",
+        "Robot Check",
     )
 )
+
+_AMAZON_DOMAIN_RE = re.compile(
+    r"amazon\.(com|fr|co\.uk|de|es|it|ca|co\.jp|com\.mx|com\.br|com\.au|nl|se|pl|sg|ae|in)",
+    re.IGNORECASE,
+)
+
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
+    "cache-control": "max-age=0",
+}
 
 
 def _is_bot_challenge(status: int, html: str) -> bool:
@@ -275,22 +302,67 @@ def _is_bot_challenge(status: int, html: str) -> bool:
     return any(m in snippet for m in _BOT_CHALLENGE_MARKERS)
 
 
+def _parse_amazon(html: str) -> dict:
+    """Extract product data from Amazon product page HTML."""
+    result: dict = {}
+
+    # Title
+    m = re.search(r'id="productTitle"[^>]*>\s*(.*?)\s*</span>', html, re.DOTALL | re.IGNORECASE)
+    if m:
+        raw = re.sub(r"<[^>]+>", "", m.group(1))
+        result["title"] = re.sub(r"\s+", " ", unescape(raw)).strip()
+
+    # data-old-hires is the reliable high-res source Amazon embeds server-side
+    m = re.search(r'data-old-hires="(https://[^"]+)"', html)
+    if m:
+        result["image_url"] = unescape(m.group(1))
+
+    # Fallback: data-a-dynamic-image (JSON map, sometimes empty on SSR)
+    if "image_url" not in result:
+        m = re.search(r'data-a-dynamic-image="([^"]+)"', html)
+        if m:
+            try:
+                imgs = json.loads(unescape(m.group(1)))
+                if imgs:
+                    result["image_url"] = next(iter(imgs))
+            except Exception:
+                pass
+
+    # Feature bullets as description (first 3 non-trivial bullets)
+    bullets_m = re.search(r'id="feature-bullets".*?</ul>', html, re.DOTALL)
+    if bullets_m:
+        items = re.findall(
+            r'<span class="a-list-item">\s*(.*?)\s*</span>',
+            bullets_m.group(0),
+            re.DOTALL,
+        )
+        clean = []
+        for b in items[:4]:
+            b = unescape(re.sub(r"<[^>]+>", "", b)).strip()
+            if b and len(b) > 10:
+                clean.append(b)
+        if clean:
+            result["description"] = " · ".join(clean[:3])[:500]
+
+    # Price — whole + optional fraction
+    pm = re.search(r'class="a-price-whole">([^<]+)<', html)
+    if pm:
+        price_str = pm.group(1).strip().rstrip(".")
+        fm = re.search(r'class="a-price-fraction">([^<]+)<', html)
+        if fm:
+            price_str += "." + fm.group(1).strip()
+        result["price_raw"] = price_str
+
+    return result
+
+
 @router.post("/fetch-meta", response_model=UrlMetaResponse)
 async def fetch_url_meta(data: UrlFetchRequest):
+    is_amazon = bool(_AMAZON_DOMAIN_RE.search(data.url))
+
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
-            resp = await client.get(
-                data.url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/120.0.0.0 Safari/537.36"
-                    ),
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-                },
-            )
+            resp = await client.get(data.url, headers=_BROWSER_HEADERS)
             html = resp.text[:500_000]
     except Exception:
         return UrlMetaResponse()
@@ -315,6 +387,19 @@ async def fetch_url_meta(data: UrlFetchRequest):
         or parser.twitter.get("image")
         or parser.link_image
     )
+    price_raw = parser.price_raw
+
+    # Amazon-specific extraction fills gaps left by OG parser
+    if is_amazon:
+        amz = _parse_amazon(html)
+        if not title and amz.get("title"):
+            title = amz["title"]
+        if not description and amz.get("description"):
+            description = amz["description"]
+        if not image_url and amz.get("image_url"):
+            image_url = amz["image_url"]
+        if not price_raw and amz.get("price_raw"):
+            price_raw = amz["price_raw"]
 
     # Filter bot-challenge titles that slipped through (non-403 challenges)
     if title and title.casefold() in _BOT_PAGE_TITLES:
@@ -328,7 +413,7 @@ async def fetch_url_meta(data: UrlFetchRequest):
         title=title,
         description=description,
         image_url=image_url,
-        price=_parse_price(parser.price_raw),
+        price=_parse_price(price_raw),
     )
 
 

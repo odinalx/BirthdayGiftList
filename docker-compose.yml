@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: birthdaygift-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=birthday_gift
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - birthdaygift
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: birthdaygift-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      - ENVIRONMENT=dev
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/birthday_gift
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+    command: sh -c "uv sync --frozen --no-dev && uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - birthdaygift
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: birthdaygift-frontend
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./package.json:/app/package.json
+    command: npm run dev -- --host
+    networks:
+      - birthdaygift
+
+volumes:
+  postgres_data:
+  backend_venv:
+
+networks:
+  birthdaygift:
+    driver: bridge
