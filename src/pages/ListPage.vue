@@ -149,12 +149,14 @@ function statusLabel(status: Gift['status']) {
           <div class="gift-body">
             <div class="gift-header">
               <h3>{{ gift.title }}</h3>
-              <a v-if="gift.link" :href="gift.link" target="_blank" class="gift-link" title="Voir le produit">
-                <ExternalLink :size="14" />
-              </a>
             </div>
 
             <p v-if="gift.description" class="gift-desc">{{ gift.description }}</p>
+
+            <a v-if="gift.link" :href="gift.link" target="_blank" rel="noopener" class="gift-link">
+              <ExternalLink :size="13" />
+              Voir le produit
+            </a>
 
             <div class="gift-footer">
               <span v-if="gift.price" class="gift-price">{{ gift.price }} €</span>
@@ -323,13 +325,22 @@ function statusLabel(status: Gift['status']) {
 }
 
 .gift-link {
-  color: var(--app-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
   text-decoration: none;
-  flex-shrink: 0;
-  transition: color 0.15s;
+  transition: all 0.15s;
 }
 
-.gift-link:hover { color: var(--app-text); }
+.gift-link:hover { background: #dbeafe; border-color: #bfdbfe; }
 
 .gift-desc {
   font-size: 0.85rem;
